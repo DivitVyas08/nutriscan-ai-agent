@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NutriScan AI - Food Logging & Verification Agent</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- html5-qrcode for barcode & camera scanning -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    /* Custom scrollbar for clean dark look */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="h-full flex flex-col bg-slate-950 text-slate-100 antialiased overflow-x-hidden">
+
+  <!-- HTTP / Non-Secure Context Warning Banner -->
+  <div id="http-warning-banner" class="hidden bg-amber-500/10 border-b border-amber-500/30 text-amber-200 px-4 py-2.5 text-xs flex items-center justify-between z-50">
+    <div class="flex items-center gap-2 max-w-5xl mx-auto w-full">
+      <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
+      <span>
+        <strong>Non-Secure Context (HTTP):</strong> Live stream camera requires <strong>HTTPS</strong> or <code>localhost</code>. Mobile native camera photo fallback is active!
+      </span>
+    </div>
+    <button onclick="document.getElementById('http-warning-banner').classList.add('hidden')" class="text-amber-400 hover:text-white p-1">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+  </div>
+
+  <!-- Header / Navigation -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
+          <i data-lucide="scan-line" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg text-white leading-tight">NutriScan <span class="text-emerald-400 text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 font-mono">AI AGENT</span></h1>
+          <p class="text-xs text-slate-400">Google Lens AI Vision + Open Food Facts API</p>
+        </div>
+      </div>
+
+      <!-- Quick Stats Header Counter -->
+      <div class="hidden md:flex items-center space-x-6 text-sm">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="flame" class="w-4 h-4 text-amber-500"></i>
+          <span class="text-slate-400">Logged Today:</span>
+          <span id="header-cals-count" class="font-bold text-emerald-400 font-mono">0 kcal</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <i data-lucide="database" class="w-4 h-4 text-cyan-400"></i>
+          <span class="text-slate-400">Total Entries:</span>
+          <span id="header-items-count" class="font-bold text-cyan-300 font-mono">0</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: Input & AI Detection Agent (6 cols) -->
+    <section class="lg:col-span-6 flex flex-col space-y-6">
+
+      <!-- Scanner & Camera Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold text-white flex items-center gap-2">
+            <i data-lucide="camera" class="w-5 h-5 text-emerald-400"></i> AI Lens & Camera Capture
+          </h2>
+          <span id="security-badge" class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">Secure Context</span>
+        </div>
+
+        <!-- Mode Toggle Tabs -->
+        <div class="grid grid-cols-3 gap-2 p-1 bg-slate-950 rounded-xl mb-4 text-xs font-medium border border-slate-800">
+          <button id="tab-photo" onclick="switchInputMode('photo')" class="py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-slate-950 font-semibold shadow">
+            <i data-lucide="image" class="w-4 h-4"></i> Photo / Lens
+          </button>
+          <button id="tab-barcode" onclick="switchInputMode('barcode')" class="py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white">
+            <i data-lucide="barcode" class="w-4 h-4"></i> Barcode
+          </button>
+          <button id="tab-text" onclick="switchInputMode('text')" class="py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white">
+            <i data-lucide="pencil" class="w-4 h-4"></i> Text Prompt
+          </button>
+        </div>
+
+        <!-- MODE 1: PHOTO / LENS SCANNER -->
+        <div id="mode-photo-container" class="space-y-4">
+          <!-- Live Camera Video View (Hidden by default) -->
+          <div id="live-camera-wrapper" class="hidden relative rounded-xl overflow-hidden bg-black border border-slate-700 min-h-[220px] flex items-center justify-center">
+            <video id="live-camera-video" autoplay playsinline class="w-full max-h-64 object-contain"></video>
+            <button onclick="captureFromLiveCamera()" class="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-full text-xs flex items-center gap-2 shadow-lg transition z-30">
+              <i data-lucide="camera" class="w-4 h-4"></i> Snap Photo
+            </button>
+            <button onclick="closeLiveCamera()" class="absolute top-2 right-2 bg-slate-900/80 text-slate-300 p-1.5 rounded-full hover:bg-slate-900 border border-slate-700 z-30">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <!-- File Drop Zone & Camera Launcher -->
+          <div id="dropzone-wrapper" class="relative border-2 border-dashed border-slate-700 rounded-xl p-6 text-center bg-slate-950/50 hover:border-emerald-500/50 transition-colors group">
+            <!-- Native file inputs with environment camera capture fallbacks -->
+            <input type="file" id="image-input" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
+            <input type="file" id="camera-native-input" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelected(event)">
+            
+            <div id="upload-placeholder" class="flex flex-col items-center justify-center py-2 space-y-3">
+              <div class="p-3 bg-slate-800 rounded-full text-emerald-400 group-hover:scale-110 transition-transform">
+                <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Upload food photo or capture image</p>
+                <p class="text-xs text-slate-500 mt-1">Supports JPG, PNG, WEBP</p>
+              </div>
+
+              <!-- Action buttons for Photo Capture & Browse -->
+              <div class="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <button type="button" onclick="openLiveCamera(event)" class="px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition">
+                  <i data-lucide="video" class="w-4 h-4"></i> Live Camera
+                </button>
+                <button type="button" onclick="triggerNativeCamera()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition">
+                  <i data-lucide="camera" class="w-4 h-4"></i> Take Photo
+                </button>
+                <button type="button" onclick="triggerFileInput()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition">
+                  <i data-lucide="folder-open" class="w-4 h-4"></i> Browse File
+                </button>
+              </div>
+            </div>
+
+            <!-- Image Preview Box -->
+            <div id="image-preview-wrapper" class="hidden relative rounded-lg overflow-hidden bg-slate-900 border border-slate-700">
+              <img id="image-preview" src="" alt="Food Preview" class="max-h-64 mx-auto object-contain">
+              <button onclick="clearImageSelection()" class="absolute top-2 right-2 bg-slate-900/80 text-rose-400 p-1.5 rounded-full hover:bg-slate-900 border border-slate-700 z-20">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <button id="btn-analyze-photo" onclick="analyzePhotoWithAI()" disabled class="w-full py-3 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+            <span>Analyze Food Image with AI Agent</span>
+          </button>
+        </div>
+
+        <!-- MODE 2: BARCODE CAMERA SCANNER -->
+        <div id="mode-barcode-container" class="hidden space-y-4">
+          <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+            <div id="barcode-reader" class="w-full min-h-[220px]"></div>
+            <p id="barcode-status" class="text-xs text-center py-2 text-slate-400 border-t border-slate-800/80 bg-slate-900/50">
+              Point your camera at a food package barcode
+            </p>
+          </div>
+
+          <!-- Fallback photo barcode upload for non-HTTPS connections -->
+          <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-xs flex items-center justify-between">
+            <span class="text-slate-400">Can't stream camera? Upload photo of barcode:</span>
+            <input type="file" id="barcode-file-input" accept="image/*" class="hidden" onchange="scanBarcodeFromImageFile(event)">
+            <button onclick="document.getElementById('barcode-file-input').click()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs flex items-center gap-1 font-medium transition">
+              <i data-lucide="image-plus" class="w-3.5 h-3.5"></i> Scan Image
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input type="text" id="manual-barcode-input" placeholder="Or enter barcode manually (e.g., 737628064502)" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono">
+            <button onclick="queryOpenFoodFactsByInput()" class="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+              <i data-lucide="search" class="w-4 h-4"></i> Lookup
+            </button>
+          </div>
+        </div>
+
+        <!-- MODE 3: TEXT DESCRIPTION -->
+        <div id="mode-text-container" class="hidden space-y-4">
+          <textarea id="text-food-prompt" rows="3" placeholder="Describe what you ate (e.g., '1 bowl of grilled chicken salad with olive oil and avocado')" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 resize-none"></textarea>
+          <button onclick="analyzeTextWithAI()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg">
+            <i data-lucide="brain" class="w-5 h-5"></i>
+            <span>Process Food Description</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- VERIFICATION LOOP CARD (Agent Prompt & Confirmation) -->
+      <div id="verification-card" class="bg-slate-900 border border-emerald-500/40 rounded-2xl p-5 shadow-2xl relative transition-all hidden">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </div>
+            <h3 class="font-bold text-white text-sm">Agent Verification Loop</h3>
+          </div>
+          <span id="detection-source-badge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Open Food Facts</span>
+        </div>
+
+        <!-- Verification Question Prompt -->
+        <div class="mt-4 p-3 bg-slate-950/80 rounded-xl border border-slate-800 flex items-start gap-3">
+          <div class="p-2 bg-amber-500/10 text-amber-400 rounded-lg mt-0.5 shrink-0">
+            <i data-lucide="help-circle" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400">AI Agent asks:</p>
+            <p id="verification-question" class="text-xs font-medium text-white mt-0.5">
+              "I detected <strong id="detected-title" class="text-emerald-400">Item</strong> with roughly <strong id="detected-cals" class="text-amber-400">0 kcal</strong>. Is this correct?"
+            </p>
+          </div>
+        </div>
+
+        <!-- Parsed Data Edit Form -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-xs">
+          <div class="col-span-2 sm:col-span-4">
+            <label class="block text-slate-400 mb-1">Food / Product Name</label>
+            <input type="text" id="verify-name" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:border-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Calories (kcal)</label>
+            <input type="number" id="verify-calories" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-amber-400 font-mono font-bold focus:border-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Protein (g)</label>
+            <input type="number" id="verify-protein" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-emerald-400 font-mono focus:border-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Carbs (g)</label>
+            <input type="number" id="verify-carbs" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-cyan-400 font-mono focus:border-emerald-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Fat (g)</label>
+            <input type="number" id="verify-fat" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-rose-400 font-mono focus:border-emerald-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-3 mt-5 pt-3 border-t border-slate-800">
+          <button onclick="confirmAndSaveFood()" class="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-md">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i> Yes, Save to Database
+          </button>
+          <button onclick="cancelVerification()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-xs transition">
+            Discard
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT COLUMN: Database & Nutritional Analytics (6 cols) -->
+    <section class="lg:col-span-6 flex flex-col space-y-6">
+
+      <!-- Macro Summary Cards -->
+      <div class="grid grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 text-center">
+          <p class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Calories</p>
+          <p id="stat-cals" class="text-base sm:text-xl font-bold font-mono text-amber-400 mt-1">0</p>
+          <p class="text-[10px] text-slate-500">kcal</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 text-center">
+          <p class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Protein</p>
+          <p id="stat-protein" class="text-base sm:text-xl font-bold font-mono text-emerald-400 mt-1">0g</p>
+          <p class="text-[10px] text-slate-500">grams</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 text-center">
+          <p class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Carbs</p>
+          <p id="stat-carbs" class="text-base sm:text-xl font-bold font-mono text-cyan-400 mt-1">0g</p>
+          <p class="text-[10px] text-slate-500">grams</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 text-center">
+          <p class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Fats</p>
+          <p id="stat-fat" class="text-base sm:text-xl font-bold font-mono text-rose-400 mt-1">0g</p>
+          <p class="text-[10px] text-slate-500">grams</p>
+        </div>
+      </div>
+
+      <!-- Clean Structured Database Log Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col min-h-[400px]">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-base font-semibold text-white flex items-center gap-2">
+              <i data-lucide="database" class="w-5 h-5 text-cyan-400"></i> Food Database Log
+            </h2>
+            <p class="text-xs text-slate-400">Structured repository of verified meals</p>
+          </div>
+          <button onclick="clearDatabaseLog()" class="text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1 transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear All
+          </button>
+        </div>
+
+        <!-- Database Table -->
+        <div class="flex-1 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900 border-b border-slate-800 text-slate-400 font-mono uppercase text-[10px]">
+              <tr>
+                <th class="p-3">Time</th>
+                <th class="p-3">Item / Food</th>
+                <th class="p-3">Source</th>
+                <th class="p-3 text-right">Calories</th>
+                <th class="p-3 text-right">P/C/F</th>
+                <th class="p-3 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="db-table-body" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+              <!-- Entries rendered dynamically -->
+              <tr id="empty-db-row">
+                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                  <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                  No food logged yet. Upload a photo or scan a barcode to test the AI Agent.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Detailed Camera / Permission Diagnostic Modal -->
+  <div id="camera-error-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-6 text-left space-y-4 shadow-2xl relative">
+      <button onclick="closeCameraErrorModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
+          <i data-lucide="camera-off" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h3 id="modal-error-title" class="text-base font-bold text-white">Camera Access Error</h3>
+          <p class="text-xs text-rose-400 font-mono mt-0.5" id="modal-error-code">NOT_ALLOWED_ERROR</p>
+        </div>
+      </div>
+
+      <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
+        <p id="modal-error-desc">Camera access was not permitted by your browser or operating system.</p>
+        <div id="modal-solution-steps" class="mt-2 pt-2 border-t border-slate-800 space-y-1.5 text-slate-400">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 pt-2">
+        <button onclick="triggerNativeCamera(); closeCameraErrorModal();" class="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="camera" class="w-4 h-4"></i> Take Photo (Native)
+        </button>
+        <button onclick="closeCameraErrorModal()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-xs transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay Modal -->
+  <div id="loading-overlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-xs w-full text-center space-y-4 shadow-2xl">
+      <div class="inline-block p-3 bg-emerald-500/10 rounded-full text-emerald-400 animate-spin">
+        <i data-lucide="loader-2" class="w-8 h-8"></i>
+      </div>
+      <div>
+        <p id="loading-title" class="font-bold text-white text-sm">Analyzing Food Data...</p>
+        <p id="loading-subtitle" class="text-xs text-slate-400 mt-1">Querying AI Vision & Open Food Facts</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="bg-slate-800 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs">
+      <i id="toast-icon" data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+      <span id="toast-message">Action complete</span>
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let currentInputMode = 'photo'; // 'photo', 'barcode', 'text'
+    let selectedImageBase64 = null;
+    let html5QrcodeScanner = null;
+    let pendingVerificationItem = null;
+    let foodDatabase = [];
+    let liveCameraStream = null;
+
+    // Helper to extract clean API Key if passed via environment or window
+    function getApiKey() {
+      return window.apiKey || window.geminiApiKey || "";
+    }
+
+    // Check secure context status (HTTPS vs HTTP)
+    function checkSecurityContext() {
+      const isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      const badge = document.getElementById('security-badge');
+      const banner = document.getElementById('http-warning-banner');
+
+      if (!isSecure) {
+        if (badge) {
+          badge.className = "text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-mono";
+          badge.innerText = "HTTP (No Live Streaming)";
+        }
+        if (banner) {
+          banner.classList.remove('hidden');
+        }
+      } else {
+        if (badge) {
+          badge.className = "text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono";
+          badge.innerText = "HTTPS Secure";
+        }
+      }
+      return isSecure;
+    }
+
+    // Initialize icons & security state on load
+    window.onload = function() {
+      lucide.createIcons();
+      checkSecurityContext();
+      loadDatabaseFromMemory();
+    };
+
+    // Mode Switching
+    async function switchInputMode(mode) {
+      currentInputMode = mode;
+      
+      const photoBtn = document.getElementById('tab-photo');
+      const barcodeBtn = document.getElementById('tab-barcode');
+      const textBtn = document.getElementById('tab-text');
+
+      const photoCont = document.getElementById('mode-photo-container');
+      const barcodeCont = document.getElementById('mode-barcode-container');
+      const textCont = document.getElementById('mode-text-container');
+
+      // Close live camera if open
+      closeLiveCamera();
+
+      // Reset tab styles
+      [photoBtn, barcodeBtn, textBtn].forEach(btn => {
+        btn.className = "py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all text-slate-400 hover:text-white";
+      });
+
+      photoCont.classList.add('hidden');
+      barcodeCont.classList.add('hidden');
+      textCont.classList.add('hidden');
+
+      // Stop Barcode Camera if running when leaving barcode mode
+      if (mode !== 'barcode' && html5QrcodeScanner) {
+        await stopBarcodeScanner();
+      }
+
+      if (mode === 'photo') {
+        photoBtn.className = "py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-slate-950 font-semibold shadow";
+        photoCont.classList.remove('hidden');
+      } else if (mode === 'barcode') {
+        barcodeBtn.className = "py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-slate-950 font-semibold shadow";
+        barcodeCont.classList.remove('hidden');
+        startBarcodeScanner();
+      } else if (mode === 'text') {
+        textBtn.className = "py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all bg-emerald-500 text-slate-950 font-semibold shadow";
+        textCont.classList.remove('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    // -------------------------------------------------------------
+    // PHOTO CAPTURE & GEMINI VISION AGENT
+    // -------------------------------------------------------------
+
+    function triggerFileInput() {
+      document.getElementById('image-input').click();
+    }
+
+    function triggerNativeCamera() {
+      document.getElementById('camera-native-input').click();
+    }
+
+    async function openLiveCamera(event) {
+      if (event) event.stopPropagation();
+
+      // Check secure context restriction
+      if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        showCameraErrorModal(
+          "SECURITY_RESTRICTION",
+          "HTTP Access Restricted by Browser",
+          "Web browsers block video stream cameras on unencrypted HTTP connections (e.g. sharing via <code>http://192.168.x.x</code>).",
+          [
+            "<strong>Option 1 (Easiest):</strong> Use the <em>Take Photo</em> button to trigger your device's native camera directly.",
+            "<strong>Option 2:</strong> Serve this app over <strong>HTTPS</strong> or use a tunnel service like <code>ngrok</code> or <code>Cloudflare Tunnel</code>."
+          ]
+        );
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCameraErrorModal(
+          "NOT_SUPPORTED",
+          "Media Devices API Not Supported",
+          "Your browser or device does not support real-time video streaming.",
+          ["Use the <strong>Take Photo</strong> button to open your device's camera photo picker."]
+        );
+        return;
+      }
+
+      try {
+        liveCameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        const videoEl = document.getElementById('live-camera-video');
+        videoEl.srcObject = liveCameraStream;
+
+        document.getElementById('live-camera-wrapper').classList.remove('hidden');
+        document.getElementById('dropzone-wrapper').classList.add('hidden');
+      } catch (err) {
+        console.error("Camera access error:", err);
+        handleCameraError(err);
+      }
+    }
+
+    function handleCameraError(err) {
+      const errName = err.name || "UnknownError";
+      
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        showCameraErrorModal(
+          "PERMISSION_DENIED",
+          "Camera Permission Blocked",
+          "You or your browser settings have denied NutriScan access to your device camera.",
+          [
+            "Click the pad-lock or camera icon near your browser address bar.",
+            "Set Camera permission to <strong>Allow</strong> and refresh the page.",
+            "Alternatively, use the <strong>Take Photo (Native)</strong> button below."
+          ]
+        );
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        showCameraErrorModal(
+          "NO_CAMERA_FOUND",
+          "No Camera Detected",
+          "No video input device could be found on this system.",
+          ["Ensure your webcam or mobile camera is properly connected."]
+        );
+      } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+        showCameraErrorModal(
+          "CAMERA_IN_USE",
+          "Camera Busy / In Use",
+          "The camera is already being used by another browser tab or app.",
+          ["Close other apps (Zoom, Teams, Camera) using the camera and try again."]
+        );
+      } else {
+        showCameraErrorModal(
+          errName,
+          "Camera Stream Failed",
+          err.message || "An unexpected error occurred while accessing the camera.",
+          ["Use native photo capture or upload a saved food image."]
+        );
+      }
+    }
+
+    function showCameraErrorModal(code, title, desc, steps) {
+      document.getElementById('modal-error-code').innerText = code;
+      document.getElementById('modal-error-title').innerText = title;
+      document.getElementById('modal-error-desc').innerHTML = desc;
+
+      const stepsDiv = document.getElementById('modal-solution-steps');
+      stepsDiv.innerHTML = steps.map(s => `<p>• ${s}</p>`).join('');
+
+      document.getElementById('camera-error-modal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeCameraErrorModal() {
+      document.getElementById('camera-error-modal').classList.add('hidden');
+    }
+
+    function closeLiveCamera() {
+      if (liveCameraStream) {
+        liveCameraStream.getTracks().forEach(track => track.stop());
+        liveCameraStream = null;
+      }
+      const cameraWrapper = document.getElementById('live-camera-wrapper');
+      const dropzoneWrapper = document.getElementById('dropzone-wrapper');
+      if (cameraWrapper && dropzoneWrapper) {
+        cameraWrapper.classList.add('hidden');
+        dropzoneWrapper.classList.remove('hidden');
+      }
+    }
+
+    function captureFromLiveCamera() {
+      const videoEl = document.getElementById('live-camera-video');
+      if (!videoEl || !videoEl.videoWidth) {
+        showToast("Camera feed not ready yet", true);
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      selectedImageBase64 = dataUrl.split(',')[1];
+
+      document.getElementById('image-preview').src = dataUrl;
+      document.getElementById('upload-placeholder').classList.add('hidden');
+      document.getElementById('image-preview-wrapper').classList.remove('hidden');
+      document.getElementById('btn-analyze-photo').disabled = false;
+
+      closeLiveCamera();
+      showToast("Photo captured successfully!");
+    }
+
+    function handleImageSelected(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const fullResult = event.target.result;
+        selectedImageBase64 = fullResult.split(',')[1];
+        
+        document.getElementById('image-preview').src = fullResult;
+        document.getElementById('upload-placeholder').classList.add('hidden');
+        document.getElementById('image-preview-wrapper').classList.remove('hidden');
+        document.getElementById('btn-analyze-photo').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearImageSelection() {
+      selectedImageBase64 = null;
+      document.getElementById('image-input').value = '';
+      document.getElementById('camera-native-input').value = '';
+      document.getElementById('upload-placeholder').classList.remove('hidden');
+      document.getElementById('image-preview-wrapper').classList.add('hidden');
+      document.getElementById('btn-analyze-photo').disabled = true;
+    }
+
+    // Safely parse JSON output from Gemini models even if enclosed in markdown backticks
+    function cleanAndParseJSON(rawText) {
+      if (!rawText) return null;
+      let cleanText = rawText.trim();
+      if (cleanText.startsWith("```json")) {
+        cleanText = cleanText.substring(7);
+      } else if (cleanText.startsWith("```")) {
+        cleanText = cleanText.substring(3);
+      }
+      if (cleanText.endsWith("```")) {
+        cleanText = cleanText.substring(0, cleanText.length - 3);
+      }
+      cleanText = cleanText.trim();
+      return JSON.parse(cleanText);
+    }
+
+    async function analyzePhotoWithAI() {
+      if (!selectedImageBase64) return;
+
+      showLoading("Google Lens AI Vision", "Identifying dish, portion size & calories...");
+
+      const systemPrompt = `You are a world-class nutritionist and food identification vision agent. 
+      Analyze the provided food image. Estimate the dish name, calories, protein (g), carbs (g), and fats (g).`;
+
+      const userPrompt = `Identify the main food items in this photo and return a strict JSON object with:
+      - "food_name": string (descriptive name)
+      - "calories": number (estimated total kcal)
+      - "protein": number (estimated grams)
+      - "carbs": number (estimated grams)
+      - "fat": number (estimated grams)
+      - "confidence": string ("high", "medium", "low")`;
+
+      const payload = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: userPrompt },
+              { inlineData: { mimeType: "image/jpeg", data: selectedImageBase64 } }
+            ]
+          }
+        ],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      };
+
+      try {
+        const apiKey = getApiKey();
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const response = await fetchWithRetry(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (jsonText) {
+          const parsed = cleanAndParseJSON(jsonText);
+          presentVerification({
+            food_name: parsed.food_name || "Unidentified Food",
+            calories: Math.round(parsed.calories || 0),
+            protein: Math.round(parsed.protein || 0),
+            carbs: Math.round(parsed.carbs || 0),
+            fat: Math.round(parsed.fat || 0),
+            source: "AI Lens Vision"
+          });
+        } else {
+          showToast("Could not recognize food image clearly", true);
+        }
+      } catch (err) {
+        console.error("AI Photo Error:", err);
+        showToast("Error processing photo with AI Vision", true);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // -------------------------------------------------------------
+    // OPEN FOOD FACTS BARCODE LOOKUP
+    // -------------------------------------------------------------
+
+    async function startBarcodeScanner() {
+      if (html5QrcodeScanner) {
+        await stopBarcodeScanner();
+      }
+
+      const readerDiv = document.getElementById("barcode-reader");
+      readerDiv.innerHTML = "";
+
+      // Check HTTPS requirement for HTML5 camera barcode scanning
+      if (!window.isSecureContext && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        document.getElementById('barcode-status').innerHTML = "<span class='text-amber-400'>Live camera requires HTTPS. Enter barcode manually or upload a barcode image below.</span>";
+        return;
+      }
+
+      html5QrcodeScanner = new Html5Qrcode("barcode-reader");
+      const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+      try {
+        await html5QrcodeScanner.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            document.getElementById('barcode-status').innerText = `Scanned Barcode: ${decodedText}`;
+            queryOpenFoodFacts(decodedText);
+            stopBarcodeScanner();
+          },
+          (errorMessage) => {
+            // Ignore ongoing scan loop noise
+          }
+        );
+      } catch (err) {
+        console.warn("Barcode camera error:", err);
+        document.getElementById('barcode-status').innerText = "Camera permission required or unencrypted connection detected.";
+      }
+    }
+
+    async function stopBarcodeScanner() {
+      if (html5QrcodeScanner) {
+        try {
+          if (html5QrcodeScanner.isScanning) {
+            await html5QrcodeScanner.stop();
+          }
+          html5QrcodeScanner.clear();
+        } catch (err) {
+          console.error("Error stopping barcode scanner:", err);
+        } finally {
+          html5QrcodeScanner = null;
+        }
+      }
+    }
+
+    async function scanBarcodeFromImageFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showLoading("Barcode File Scanner", "Reading barcode from photo...");
+      try {
+        const html5QrCode = new Html5Qrcode("barcode-reader");
+        const decodedText = await html5QrCode.scanFile(file, true);
+        document.getElementById('barcode-status').innerText = `Scanned Barcode: ${decodedText}`;
+        queryOpenFoodFacts(decodedText);
+      } catch (err) {
+        console.error("Barcode scan from image failed:", err);
+        showToast("Could not detect barcode from uploaded image", true);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function queryOpenFoodFactsByInput() {
+      const code = document.getElementById('manual-barcode-input').value.trim();
+      if (code) {
+        queryOpenFoodFacts(code);
+      } else {
+        showToast("Please enter a valid barcode number", true);
+      }
+    }
+
+    async function queryOpenFoodFacts(barcode) {
+      showLoading("Open Food Facts API", `Querying database for barcode: ${barcode}`);
+
+      try {
+        const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
+        const res = await fetch(url);
+
+        if (!res.ok) throw new Error("API Network error");
+
+        const data = await res.json();
+
+        if (data.status === 1 && data.product) {
+          const p = data.product;
+          const nut = p.nutriments || {};
+
+          const productName = p.product_name || p.product_name_en || "Packaged Food Item";
+          const brand = p.brands ? ` (${p.brands.split(',')[0].trim()})` : "";
+
+          // Fallback parsing logic across various OFF nutrient key conventions
+          const calories = nut['energy-kcal_100g'] || nut['energy-kcal'] || nut['energy-kcal_value'] || 0;
+          const protein = nut['proteins_100g'] || nut['proteins'] || 0;
+          const carbs = nut['carbohydrates_100g'] || nut['carbohydrates'] || 0;
+          const fat = nut['fat_100g'] || nut['fat'] || 0;
+
+          presentVerification({
+            food_name: `${productName}${brand}`,
+            calories: Math.round(Number(calories) || 0),
+            protein: Math.round(Number(protein) || 0),
+            carbs: Math.round(Number(carbs) || 0),
+            fat: Math.round(Number(fat) || 0),
+            source: "Open Food Facts"
+          });
+        } else {
+          showToast("Product not found in Open Food Facts database", true);
+        }
+      } catch (err) {
+        console.error("Open Food Facts fetch error:", err);
+        showToast("Error connecting to Open Food Facts API", true);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // -------------------------------------------------------------
+    // TEXT DESCRIPTION PROCESSING
+    // -------------------------------------------------------------
+
+    async function analyzeTextWithAI() {
+      const promptText = document.getElementById('text-food-prompt').value.trim();
+      if (!promptText) {
+        showToast("Please enter a food description first", true);
+        return;
+      }
+
+      showLoading("AI Agent Processing", "Calculating nutritional profile...");
+
+      const systemPrompt = "You are a nutritional analysis agent. Parse food descriptions into estimated macros.";
+      const userPrompt = `Analyze this food description: "${promptText}".
+      Return JSON with fields:
+      - "food_name": string
+      - "calories": number
+      - "protein": number
+      - "carbs": number
+      - "fat": number`;
+
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: { responseMimeType: "application/json" }
+      };
+
+      try {
+        const apiKey = getApiKey();
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const response = await fetchWithRetry(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (jsonText) {
+          const parsed = cleanAndParseJSON(jsonText);
+          presentVerification({
+            food_name: parsed.food_name || promptText,
+            calories: Math.round(parsed.calories || 0),
+            protein: Math.round(parsed.protein || 0),
+            carbs: Math.round(parsed.carbs || 0),
+            fat: Math.round(parsed.fat || 0),
+            source: "AI Text Parse"
+          });
+        }
+      } catch (err) {
+        console.error("AI Text Error:", err);
+        showToast("Failed to process text description", true);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // -------------------------------------------------------------
+    // HUMAN-IN-THE-LOOP VERIFICATION WORKFLOW
+    // -------------------------------------------------------------
+
+    function presentVerification(item) {
+      pendingVerificationItem = item;
+
+      document.getElementById('detected-title').innerText = item.food_name;
+      document.getElementById('detected-cals').innerText = `${item.calories} kcal`;
+      document.getElementById('detection-source-badge').innerText = item.source;
+
+      document.getElementById('verify-name').value = item.food_name;
+      document.getElementById('verify-calories').value = item.calories;
+      document.getElementById('verify-protein').value = item.protein;
+      document.getElementById('verify-carbs').value = item.carbs;
+      document.getElementById('verify-fat').value = item.fat;
+
+      const card = document.getElementById('verification-card');
+      card.classList.remove('hidden');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function cancelVerification() {
+      pendingVerificationItem = null;
+      document.getElementById('verification-card').classList.add('hidden');
+      showToast("Verification cancelled");
+    }
+
+    function confirmAndSaveFood() {
+      if (!pendingVerificationItem) return;
+
+      const verifiedItem = {
+        id: Date.now(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        food_name: document.getElementById('verify-name').value || pendingVerificationItem.food_name,
+        calories: parseInt(document.getElementById('verify-calories').value) || 0,
+        protein: parseInt(document.getElementById('verify-protein').value) || 0,
+        carbs: parseInt(document.getElementById('verify-carbs').value) || 0,
+        fat: parseInt(document.getElementById('verify-fat').value) || 0,
+        source: pendingVerificationItem.source
+      };
+
+      foodDatabase.unshift(verifiedItem);
+      renderDatabaseTable();
+      updateMacroStats();
+
+      document.getElementById('verification-card').classList.add('hidden');
+      pendingVerificationItem = null;
+      clearImageSelection();
+
+      showToast("Food verified and saved to database!");
+    }
+
+    // -------------------------------------------------------------
+    // DATABASE & UI RENDERERS
+    // -------------------------------------------------------------
+
+    function renderDatabaseTable() {
+      const tbody = document.getElementById('db-table-body');
+      tbody.innerHTML = '';
+
+      if (foodDatabase.length === 0) {
+        tbody.innerHTML = `
+          <tr id="empty-db-row">
+            <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+              <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              No food logged yet. Upload a photo or scan a barcode to test the AI Agent.
+            </td>
+          </tr>`;
+        lucide.createIcons();
+        return;
+      }
+
+      foodDatabase.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-900/80 transition-colors";
+
+        let badgeColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        if (item.source === 'Open Food Facts') badgeColor = "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+        if (item.source === 'AI Text Parse') badgeColor = "bg-purple-500/10 text-purple-400 border-purple-500/20";
+
+        tr.innerHTML = `
+          <td class="p-3 text-slate-400">${item.timestamp}</td>
+          <td class="p-3 font-semibold text-white font-sans">${escapeHtml(item.food_name)}</td>
+          <td class="p-3">
+            <span class="text-[9px] px-1.5 py-0.5 rounded border uppercase ${badgeColor}">
+              ${item.source}
+            </span>
+          </td>
+          <td class="p-3 text-right text-amber-400 font-bold">${item.calories}</td>
+          <td class="p-3 text-right text-[11px]">
+            <span class="text-emerald-400">${item.protein}p</span> / 
+            <span class="text-cyan-400">${item.carbs}c</span> / 
+            <span class="text-rose-400">${item.fat}f</span>
+          </td>
+          <td class="p-3 text-center">
+            <button onclick="deleteFoodEntry(${item.id})" class="text-slate-500 hover:text-rose-400 transition p-1">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      lucide.createIcons();
+    }
+
+    function updateMacroStats() {
+      const totals = foodDatabase.reduce((acc, curr) => {
+        acc.cals += curr.calories;
+        acc.protein += curr.protein;
+        acc.carbs += curr.carbs;
+        acc.fat += curr.fat;
+        return acc;
+      }, { cals: 0, protein: 0, carbs: 0, fat: 0 });
+
+      document.getElementById('stat-cals').innerText = totals.cals;
+      document.getElementById('stat-protein').innerText = `${totals.protein}g`;
+      document.getElementById('stat-carbs').innerText = `${totals.carbs}g`;
+      document.getElementById('stat-fat').innerText = `${totals.fat}g`;
+
+      document.getElementById('header-cals-count').innerText = `${totals.cals} kcal`;
+      document.getElementById('header-items-count').innerText = foodDatabase.length;
+    }
+
+    function deleteFoodEntry(id) {
+      foodDatabase = foodDatabase.filter(item => item.id !== id);
+      renderDatabaseTable();
+      updateMacroStats();
+      showToast("Entry removed");
+    }
+
+    function clearDatabaseLog() {
+      if (foodDatabase.length === 0) return;
+      foodDatabase = [];
+      renderDatabaseTable();
+      updateMacroStats();
+      showToast("Database log cleared");
+    }
+
+    function loadDatabaseFromMemory() {
+      renderDatabaseTable();
+      updateMacroStats();
+    }
+
+    // -------------------------------------------------------------
+    // UTILITIES & HELPER FUNCTIONS
+    // -------------------------------------------------------------
+
+    async function fetchWithRetry(url, options, retries = 3, backoff = 1000) {
+      try {
+        const response = await fetch(url, options);
+        if (!response.ok && retries > 0) {
+          await new Promise(r => setTimeout(r, backoff));
+          return fetchWithRetry(url, options, retries - 1, backoff * 2);
+        }
+        return response;
+      } catch (err) {
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, backoff));
+          return fetchWithRetry(url, options, retries - 1, backoff * 2);
+        }
+        throw err;
+      }
+    }
+
+    function showLoading(title, subtitle) {
+      document.getElementById('loading-title').innerText = title;
+      document.getElementById('loading-subtitle').innerText = subtitle;
+      document.getElementById('loading-overlay').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      const msg = document.getElementById('toast-message');
+      const icon = document.getElementById('toast-icon');
+
+      msg.innerText = message;
+      if (isError) {
+        icon.className = "w-5 h-5 text-rose-400";
+        icon.setAttribute("data-lucide", "alert-circle");
+      } else {
+        icon.className = "w-5 h-5 text-emerald-400";
+        icon.setAttribute("data-lucide", "check-circle");
+      }
+      lucide.createIcons();
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>
